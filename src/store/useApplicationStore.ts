@@ -8,11 +8,13 @@ import type {
   ResultFile,
   Evaluation
 } from '@/types';
-import { mockApplications } from '@/mock/applications';
+import { mockApplications, mockEvaluations } from '@/mock/applications';
 import { serviceItems } from '@/mock/items';
 import { useSmsStore } from './useSmsStore';
 
 const STORAGE_KEY = 'applications';
+const STORAGE_VERSION = 'v2';
+const VERSION_KEY = 'applications_version';
 
 interface ApplicationStore {
   applications: Application[];
@@ -62,12 +64,20 @@ export const useApplicationStore = create<ApplicationStore>((set, get) => ({
 
   init: () => {
     if (get().initialized) return;
+    
+    const storedVersion = localStorage.getItem(VERSION_KEY);
     const stored = loadFromStorage();
-    if (stored && stored.length > 0) {
+    
+    if (storedVersion === STORAGE_VERSION && stored && stored.length > 0) {
       set({ applications: stored, initialized: true });
     } else {
-      set({ applications: mockApplications, initialized: true });
-      saveToStorage(mockApplications);
+      const appsWithEvaluations = mockApplications.map(app => {
+        const evaluation = mockEvaluations.find(e => e.applicationId === app.id);
+        return evaluation ? { ...app, evaluation } : app;
+      });
+      set({ applications: appsWithEvaluations, initialized: true });
+      saveToStorage(appsWithEvaluations);
+      localStorage.setItem(VERSION_KEY, STORAGE_VERSION);
     }
   },
 

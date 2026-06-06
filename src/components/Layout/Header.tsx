@@ -56,15 +56,32 @@ export default function Header() {
   const notifications = useMemo(() => {
     if (!user) return [];
 
-    const userSmsRecords = user.role === 'admin'
-      ? smsRecords
-      : smsRecords.filter(sms => sms.phone === user.phone);
+    let userSmsRecords: typeof smsRecords = [];
+    let userApplications: typeof applications = [];
 
-    const userApplications = user.role === 'citizen'
-      ? applications.filter(app => app.applicantId === user.id)
-      : user.role === 'approver'
-      ? applications.filter(app => app.assignedDepartment === user.department)
-      : applications;
+    if (user.role === 'admin') {
+      userSmsRecords = smsRecords;
+      userApplications = applications;
+    } else if (user.role === 'citizen') {
+      userSmsRecords = smsRecords.filter(sms => sms.phone === user.phone);
+      userApplications = applications.filter(app => app.applicantId === user.id);
+    } else if (user.role === 'worker') {
+      userApplications = applications.filter(app => 
+        app.approvalRecords?.some(record => record.handler === user.name)
+      );
+      const handledAppIds = userApplications.map(app => app.id);
+      userSmsRecords = smsRecords.filter(sms => 
+        sms.applicationId && handledAppIds.includes(sms.applicationId)
+      );
+    } else if (user.role === 'approver') {
+      userApplications = applications.filter(app => 
+        app.assignedDepartment === user.department
+      );
+      const deptAppIds = userApplications.map(app => app.id);
+      userSmsRecords = smsRecords.filter(sms => 
+        sms.applicationId && deptAppIds.includes(sms.applicationId)
+      );
+    }
 
     const notifs: Array<{
       id: string;

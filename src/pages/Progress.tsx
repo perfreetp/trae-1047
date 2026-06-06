@@ -48,7 +48,23 @@ export default function Progress() {
     return true;
   });
 
+  const hasPermissionToView = (app: Application): boolean => {
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    if (user.role === 'citizen') return app.applicantId === user.id;
+    if (user.role === 'worker') {
+      return app.approvalRecords?.some(record => record.handler === user.name) || false;
+    }
+    if (user.role === 'approver') {
+      return app.assignedDepartment === user.department;
+    }
+    return false;
+  };
+
   const handleSelectApp = (app: Application) => {
+    if (!hasPermissionToView(app)) {
+      return;
+    }
     setSelectedApp(app);
     fetchApplicationDetail(app.id);
   };

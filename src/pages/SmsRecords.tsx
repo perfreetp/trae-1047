@@ -45,25 +45,38 @@ export default function SmsRecords() {
 
     if (user?.role === 'citizen') {
       records = records.filter(sms => sms.phone === user.phone);
-    } else if (user?.role === 'worker' || user?.role === 'approver') {
-      const userAppIds = applications
-        .filter(app => 
-          user?.role === 'approver' 
-            ? app.assignedDepartment === user.department
-            : true
-        )
+    } else if (user?.role === 'worker') {
+      const handledAppIds = applications
+        .filter(app => {
+          const hasHandler = app.approvalRecords?.some(
+            record => record.handler === user.name
+          );
+          return hasHandler;
+        })
         .map(app => app.id);
       records = records.filter(sms => 
-        !sms.applicationId || userAppIds.includes(sms.applicationId)
+        sms.applicationId && handledAppIds.includes(sms.applicationId)
+      );
+    } else if (user?.role === 'approver') {
+      const deptAppIds = applications
+        .filter(app => app.assignedDepartment === user.department)
+        .map(app => app.id);
+      records = records.filter(sms => 
+        sms.applicationId && deptAppIds.includes(sms.applicationId)
       );
     }
 
     if (searchKeyword) {
-      records = records.filter(sms => 
-        sms.phone.includes(searchKeyword) || 
-        sms.content.includes(searchKeyword) ||
-        (sms.applicationId && sms.applicationId.includes(searchKeyword))
-      );
+      const keyword = searchKeyword.trim();
+      const isPhoneSearch = /^1\d{10}$/.test(keyword);
+      records = records.filter(sms => {
+        if (isPhoneSearch) {
+          return sms.phone === keyword;
+        }
+        return sms.phone.includes(keyword) || 
+               sms.content.includes(keyword) ||
+               (sms.applicationId && sms.applicationId.includes(keyword));
+      });
     }
 
     if (filterType !== 'all') {
