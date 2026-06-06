@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react';
-import { Search, Clock, FileText, Download, Calendar, MessageSquare, ChevronRight, AlertCircle, CheckCircle2, Upload, X, PenTool, MapPin, Phone } from 'lucide-react';
+import { Search, Clock, FileText, Download, Calendar, MessageSquare, ChevronRight, AlertCircle, CheckCircle2, Upload, X, PenTool, MapPin, Phone, Bell, Star } from 'lucide-react';
 import { useApplicationStore } from '@/store/useApplicationStore';
 import { useUserStore } from '@/store/useUserStore';
+import { useSmsStore } from '@/store/useSmsStore';
 import StatusBadge from '@/components/common/StatusBadge';
-import type { Application, UploadedMaterial, Appointment } from '@/types';
+import type { Application, UploadedMaterial, Appointment, Evaluation, SmsRecord } from '@/types';
 
 const statusTabs = [
   { key: 'all', label: '全部' },
@@ -18,15 +19,19 @@ const timeSlots = [
 ];
 
 export default function Progress() {
-  const { applications, fetchApplications, fetchApplicationDetail, resubmitAfterCorrection, updateMaterial, setAppointment, addMaterial, currentApplication, setCurrentApplication } = useApplicationStore();
+  const { applications, fetchApplications, fetchApplicationDetail, resubmitAfterCorrection, updateMaterial, setAppointment, addMaterial, currentApplication, setCurrentApplication, submitEvaluation } = useApplicationStore();
   const { user } = useUserStore();
+  const { smsRecords } = useSmsStore();
   const [activeTab, setActiveTab] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [showEvalModal, setShowEvalModal] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
+  const [evalRating, setEvalRating] = useState(5);
+  const [evalContent, setEvalContent] = useState('');
   const [selectedFileForReupload, setSelectedFileForReupload] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +102,57 @@ export default function Progress() {
     setAppointmentTime('');
     const updated = fetchApplicationDetail(selectedApp.id);
     if (updated) setSelectedApp(updated);
+  };
+
+  const handleSubmitEvaluation = () => {
+    if (!selectedApp) return;
+    
+    const evaluation: Evaluation = {
+      id: `eval-${Date.now()}`,
+      applicationId: selectedApp.id,
+      itemName: selectedApp.itemName,
+      rating: evalRating,
+      content: evalContent,
+      createTime: new Date().toLocaleString(),
+      applicantName: user?.name || ''
+    };
+
+    submitEvaluation(selectedApp.id, evaluation);
+    setShowEvalModal(false);
+    setEvalRating(5);
+    setEvalContent('');
+    const updated = fetchApplicationDetail(selectedApp.id);
+    if (updated) setSelectedApp(updated);
+  };
+
+  const getAppSmsRecords = (appId: string): SmsRecord[] => {
+    return smsRecords.filter(sms => sms.applicationId === appId);
+  };
+
+  const getSmsTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      submit_success: '申报提交成功',
+      correction: '材料补正通知',
+      completed: '办件办结通知',
+      overdue: '超时预警',
+      login_code: '登录验证码'
+    };
+    return labels[type] || type;
+  };
+
+  const renderStars = (count: number) => {
+    return (
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={`w-4 h-4 ${
+              star <= count ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+            }`}
+          />
+        ))}
+      </div>
+    );
   };
 
   const handleDownloadResult = (file: { id: string; name: string }) => {
@@ -443,6 +499,71 @@ export default function Progress() {
                   </div>
                 )}
 
+                {selectedApp.evaluation && (
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <MessageSquare className="w-5 h-5 text-blue-600" />
+                      满意度评价
+                    </h3>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            {renderStars(selectedApp.evaluation.rating)}
+                            <span className="text-sm text-green-700">
+                              {selectedApp.evaluation.rating === 5 ? '非常满意' :
+                               selectedApp.evaluation.rating === 4 ? '满意' :
+                               selectedApp.evaluation.rating === 3 ? '一般' :
+                               selectedApp.evaluation.rating === 2 ? '不满意' : '非常不满意'}
+                            </span>
+                          </div>
+                          {selectedApp.evaluation.content && (
+                            <p className="text-sm text-green-700">{selectedApp.evaluation.content}</p>
+                          )}
+                          <p className="text-xs text-green-600 mt-2">评价时间：{selectedApp.evaluation.createTime}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {getAppSmsRecords(selectedApp.id).length > 0 && (
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Bell className="w-5 h-5 text-blue-600" />
+                      短信通知记录
+                    </h3>
+                    <div className="space-y-3">
+                      {getAppSmsRecords(selectedApp.id).map((sms) => (
+                        <div key={sms.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          sms.status === 'sent' ? 'bg-green-100' : sms.status === 'failed' ? 'bg-red-100' : 'bg-yellow-100'
+                        }`}>
+                          <Bell className={`w-4 h-4 ${
+                            sms.status === 'sent' ? 'text-green-600' : sms.status === 'failed' ? 'text-red-600' : 'text-yellow-600'
+                          }`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900 text-sm">{getSmsTypeLabel(sms.type)}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              sms.status === 'sent' ? 'bg-green-100 text-green-700' :
+                              sms.status === 'failed' ? 'bg-red-100 text-red-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {sms.status === 'sent' ? '已发送' : sms.status === 'failed' ? '发送失败' : '发送中'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{sms.content}</p>
+                          <p className="text-xs text-gray-400 mt-1">{sms.createTime}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
                 <div className="p-6">
                   <div className="flex flex-wrap gap-3">
                     {selectedApp.status === 'completed' && (
@@ -475,6 +596,15 @@ export default function Progress() {
                           >
                             <Calendar className="w-4 h-4" />
                             预约取件
+                          </button>
+                        )}
+                        {!selectedApp.evaluation && user?.role === 'citizen' && (
+                          <button
+                            onClick={() => setShowEvalModal(true)}
+                            className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors flex items-center gap-2"
+                          >
+                            <Star className="w-4 h-4" />
+                            评价
                           </button>
                         )}
                       </>
@@ -612,6 +742,78 @@ export default function Progress() {
                   className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   确认预约
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEvalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">满意度评价</h3>
+              <button
+                onClick={() => {
+                  setShowEvalModal(false);
+                  setEvalRating(5);
+                  setEvalContent('');
+                }}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">服务评分</label>
+                <div className="flex items-center gap-4">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-8 h-8 cursor-pointer transition-colors ${
+                          star <= evalRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
+                        }`}
+                        onClick={() => setEvalRating(star)}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm text-gray-600">
+                    {evalRating === 5 ? '非常满意' :
+                     evalRating === 4 ? '满意' :
+                     evalRating === 3 ? '一般' :
+                     evalRating === 2 ? '不满意' : '非常不满意'}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">评价内容</label>
+                <textarea
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={4}
+                  placeholder="请输入您的评价和建议..."
+                  value={evalContent}
+                  onChange={(e) => setEvalContent(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowEvalModal(false);
+                    setEvalRating(5);
+                    setEvalContent('');
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSubmitEvaluation}
+                  className="flex-1 px-4 py-2.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors"
+                >
+                  提交评价
                 </button>
               </div>
             </div>

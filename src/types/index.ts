@@ -118,6 +118,7 @@ export interface Application {
   appointment?: Appointment;
   resultFiles?: ResultFile[];
   assignedDepartment?: string;
+  evaluation?: Evaluation;
 }
 
 export interface Evaluation {

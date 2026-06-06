@@ -5,7 +5,8 @@ import type {
   ApprovalRecord,
   Signature,
   Appointment,
-  ResultFile
+  ResultFile,
+  Evaluation
 } from '@/types';
 import { mockApplications } from '@/mock/applications';
 import { serviceItems } from '@/mock/items';
@@ -35,6 +36,7 @@ interface ApplicationStore {
   completeApplication: (appId: string) => void;
   rejectApplication: (appId: string, opinion: string) => void;
   requestCorrection: (appId: string, notice: string, materialIds: string[]) => void;
+  submitEvaluation: (appId: string, evaluation: Evaluation) => void;
 }
 
 const saveToStorage = (applications: Application[]) => {
@@ -470,6 +472,24 @@ export const useApplicationStore = create<ApplicationStore>((set, get) => ({
       );
       saveToStorage(newApps);
       return { applications: newApps };
+    });
+  },
+
+  submitEvaluation: (appId: string, evaluation: Evaluation) => {
+    set((state) => {
+      const newApps = state.applications.map((app) =>
+        app.id === appId
+          ? { ...app, evaluation, updateTime: new Date().toLocaleString() }
+          : app
+      );
+      saveToStorage(newApps);
+      return {
+        applications: newApps,
+        currentApplication:
+          state.currentApplication?.id === appId
+            ? { ...state.currentApplication, evaluation, updateTime: new Date().toLocaleString() }
+            : state.currentApplication
+      };
     });
   }
 }));

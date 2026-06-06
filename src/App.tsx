@@ -13,6 +13,7 @@ import Progress from "@/pages/Progress";
 import Statistics from "@/pages/Statistics";
 import Login from "@/pages/Login";
 import SmsRecords from "@/pages/SmsRecords";
+import MyEvaluation from "@/pages/MyEvaluation";
 import { useApplicationStore } from "@/store/useApplicationStore";
 import { useSmsStore } from "@/store/useSmsStore";
 
@@ -82,9 +83,17 @@ function AppContent() {
           }
         />
         <Route
+          path="my-evaluation"
+          element={
+            <ProtectedRoute allowedRoles={['citizen']}>
+              <MyEvaluation />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="sms"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
+            <ProtectedRoute allowedRoles={['citizen', 'worker', 'approver', 'admin']}>
               <SmsRecords />
             </ProtectedRoute>
           }

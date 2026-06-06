@@ -1,118 +1,183 @@
-import { useState } from 'react';
-import { MessageSquare, Clock, CheckCircle, XCircle, Loader2, RefreshCw, Search } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  Search,
+  Filter,
+  Bell,
+  CheckCircle,
+  Clock,
+  XCircle,
+  MessageSquare,
+  Phone,
+  Calendar,
+  FileText
+} from 'lucide-react';
 import { useSmsStore } from '@/store/useSmsStore';
+import { useUserStore } from '@/store/useUserStore';
+import { useApplicationStore } from '@/store/useApplicationStore';
 import type { SmsType, SmsStatus } from '@/types';
 
-const typeLabels: Record<SmsType, string> = {
-  login_code: '登录验证码',
-  submit_success: '提交成功通知',
-  correction: '补正通知',
-  overdue: '超时预警',
-  completed: '办结通知'
-};
+const smsTypeOptions: { value: SmsType | 'all'; label: string }[] = [
+  { value: 'all', label: '全部类型' },
+  { value: 'login_code', label: '登录验证码' },
+  { value: 'submit_success', label: '申报提交成功' },
+  { value: 'correction', label: '材料补正通知' },
+  { value: 'overdue', label: '超时预警' },
+  { value: 'completed', label: '办件办结通知' }
+];
 
-const statusLabels: Record<SmsStatus, string> = {
-  pending: '发送中',
-  sent: '已发送',
-  failed: '发送失败'
-};
+const smsStatusOptions: { value: SmsStatus | 'all'; label: string }[] = [
+  { value: 'all', label: '全部状态' },
+  { value: 'sent', label: '已发送' },
+  { value: 'pending', label: '发送中' },
+  { value: 'failed', label: '发送失败' }
+];
 
 export default function SmsRecords() {
-  const { smsRecords, sendSms } = useSmsStore();
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [searchText, setSearchText] = useState('');
+  const { user } = useUserStore();
+  const { smsRecords } = useSmsStore();
+  const { applications } = useApplicationStore();
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [filterType, setFilterType] = useState<SmsType | 'all'>('all');
+  const [filterStatus, setFilterStatus] = useState<SmsStatus | 'all'>('all');
 
-  const filteredRecords = smsRecords.filter((record) => {
-    if (typeFilter !== 'all' && record.type !== typeFilter) return false;
-    if (statusFilter !== 'all' && record.status !== statusFilter) return false;
-    if (searchText && !record.phone.includes(searchText) && !record.content.includes(searchText)) return false;
-    return true;
-  });
+  const filteredRecords = useMemo(() => {
+    let records = smsRecords;
+
+    if (user?.role === 'citizen') {
+      records = records.filter(sms => sms.phone === user.phone);
+    } else if (user?.role === 'worker' || user?.role === 'approver') {
+      const userAppIds = applications
+        .filter(app => 
+          user?.role === 'approver' 
+            ? app.assignedDepartment === user.department
+            : true
+        )
+        .map(app => app.id);
+      records = records.filter(sms => 
+        !sms.applicationId || userAppIds.includes(sms.applicationId)
+      );
+    }
+
+    if (searchKeyword) {
+      records = records.filter(sms => 
+        sms.phone.includes(searchKeyword) || 
+        sms.content.includes(searchKeyword) ||
+        (sms.applicationId && sms.applicationId.includes(searchKeyword))
+      );
+    }
+
+    if (filterType !== 'all') {
+      records = records.filter(sms => sms.type === filterType);
+    }
+
+    if (filterStatus !== 'all') {
+      records = records.filter(sms => sms.status === filterStatus);
+    }
+
+    return records.sort((a, b) => 
+      new Date(b.createTime).getTime() - new Date(a.createTime).getTime()
+    );
+  }, [smsRecords, user, applications, searchKeyword, filterType, filterStatus]);
+
+  const stats = useMemo(() => ({
+    total: filteredRecords.length,
+    sent: filteredRecords.filter(r => r.status === 'sent').length,
+    pending: filteredRecords.filter(r => r.status === 'pending').length,
+    failed: filteredRecords.filter(r => r.status === 'failed').length
+  }), [filteredRecords]);
 
   const getStatusIcon = (status: SmsStatus) => {
     switch (status) {
       case 'sent':
         return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'pending':
+        return <Clock className="w-4 h-4 text-yellow-500" />;
       case 'failed':
         return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'pending':
-      default:
-        return <Loader2 className="w-4 h-4 text-yellow-500 animate-spin" />;
     }
   };
 
-  const getStatusBadgeClass = (status: SmsStatus) => {
+  const getStatusStyle = (status: SmsStatus) => {
     switch (status) {
       case 'sent':
         return 'bg-green-100 text-green-700';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-700';
       case 'failed':
         return 'bg-red-100 text-red-700';
-      case 'pending':
-      default:
-        return 'bg-yellow-100 text-yellow-700';
     }
   };
 
-  const stats = {
-    total: smsRecords.length,
-    sent: smsRecords.filter(r => r.status === 'sent').length,
-    pending: smsRecords.filter(r => r.status === 'pending').length,
-    failed: smsRecords.filter(r => r.status === 'failed').length
+  const getStatusLabel = (status: SmsStatus) => {
+    switch (status) {
+      case 'sent': return '已发送';
+      case 'pending': return '发送中';
+      case 'failed': return '发送失败';
+    }
+  };
+
+  const getTypeLabel = (type: SmsType) => {
+    const found = smsTypeOptions.find(t => t.value === type);
+    return found ? found.label : type;
+  };
+
+  const getApplicationName = (appId?: string) => {
+    if (!appId) return '-';
+    const app = applications.find(a => a.id === appId);
+    return app ? app.itemName : appId;
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">短信发送记录</h1>
-          <p className="text-gray-600">查看所有短信发送状态和详细内容</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">短信记录</h1>
+          <p className="text-gray-500">
+            {user?.role === 'admin' 
+              ? '查看和管理所有短信发送记录'
+              : user?.role === 'citizen'
+              ? '查看您的短信发送记录'
+              : '查看您业务范围内的短信发送记录'
+            }
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <MessageSquare className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-                <p className="text-sm text-gray-500">总发送量</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Bell className="w-6 h-6 text-blue-600" />
               </div>
             </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+            <p className="text-gray-500">总发送量</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <CheckCircle className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.sent}</p>
-                <p className="text-sm text-gray-500">已发送</p>
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-green-50 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-green-600" />
               </div>
             </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.sent}</p>
+            <p className="text-gray-500">已发送</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.pending}</p>
-                <p className="text-sm text-gray-500">发送中</p>
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-yellow-50 rounded-lg">
+                <Clock className="w-6 h-6 text-yellow-600" />
               </div>
             </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.pending}</p>
+            <p className="text-gray-500">发送中</p>
           </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <XCircle className="w-5 h-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{stats.failed}</p>
-                <p className="text-sm text-gray-500">发送失败</p>
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-red-50 rounded-lg">
+                <XCircle className="w-6 h-6 text-red-600" />
               </div>
             </div>
+            <p className="text-3xl font-bold text-gray-900">{stats.failed}</p>
+            <p className="text-gray-500">发送失败</p>
           </div>
         </div>
 
@@ -122,101 +187,102 @@ export default function SmsRecords() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="搜索手机号或短信内容..."
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="搜索手机号、内容或办件编号..."
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
               />
             </div>
-            <select
-              className="px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="all">全部类型</option>
-              <option value="login_code">登录验证码</option>
-              <option value="submit_success">提交成功</option>
-              <option value="correction">补正通知</option>
-              <option value="overdue">超时预警</option>
-              <option value="completed">办结通知</option>
-            </select>
-            <select
-              className="px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">全部状态</option>
-              <option value="pending">发送中</option>
-              <option value="sent">已发送</option>
-              <option value="failed">发送失败</option>
-            </select>
+            <div className="flex gap-3">
+              <select
+                className="px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as SmsType | 'all')}
+              >
+                {smsTypeOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <select
+                className="px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as SmsStatus | 'all')}
+              >
+                {smsStatusOptions.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">类型</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">手机号</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">短信内容</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关联办件</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">发送时间</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredRecords.length === 0 ? (
+        {filteredRecords.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+            <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">暂无短信记录</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                      <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      暂无短信记录
-                    </td>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">短信类型</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">手机号</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">内容</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">关联办件</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">发送时间</th>
+                    <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">状态</th>
                   </tr>
-                ) : (
-                  filteredRecords.map((record) => (
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredRecords.map((record) => (
                     <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(record.status)}`}>
-                          {getStatusIcon(record.status)}
-                          {statusLabels[record.status]}
-                        </span>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4 text-blue-500" />
+                          <span className="text-sm font-medium text-gray-900">{getTypeLabel(record.type)}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {typeLabels[record.type]}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-900 font-mono">{record.phone}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
-                        {record.phone}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-md">
-                        <p className="line-clamp-2">{record.content}</p>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-gray-600 max-w-xs truncate">{record.content}</p>
                         {record.verificationCode && (
-                          <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                            验证码: {record.verificationCode}
-                          </span>
+                          <p className="text-xs text-blue-600 mt-1">验证码：{record.verificationCode}</p>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.applicationId || '-'}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-600">{getApplicationName(record.applicationId)}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {record.createTime}
-                        </span>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-gray-600">{record.createTime}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {record.sendTime || '-'}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(record.status)}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(record.status)}`}>
+                            {getStatusLabel(record.status)}
+                          </span>
+                        </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
