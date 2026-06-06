@@ -11,9 +11,18 @@ interface UserStore {
   setUser: (user: User) => void;
 }
 
+const getInitialUser = (): User | null => {
+  try {
+    const storedUser = localStorage.getItem('user');
+    return storedUser ? JSON.parse(storedUser) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const useUserStore = create<UserStore>((set) => ({
-  user: defaultUser,
-  isLoggedIn: true,
+  user: getInitialUser(),
+  isLoggedIn: !!getInitialUser(),
   users: mockUsers,
   login: async (phone: string, _password: string) => {
     const foundUser = mockUsers.find((u) => u.phone === phone);

@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { Search, Clock, FileText, Download, Calendar, MessageSquare, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Search, Clock, FileText, Download, Calendar, MessageSquare, ChevronRight, AlertCircle, CheckCircle2, Upload, X, PenTool, MapPin, Phone } from 'lucide-react';
 import { useApplicationStore } from '@/store/useApplicationStore';
 import { useUserStore } from '@/store/useUserStore';
 import StatusBadge from '@/components/common/StatusBadge';
-import type { Application } from '@/types';
+import type { Application, UploadedMaterial, Appointment } from '@/types';
 
 const statusTabs = [
   { key: 'all', label: '全部' },
@@ -12,15 +12,26 @@ const statusTabs = [
   { key: 'correction', label: '待补正' }
 ];
 
+const timeSlots = [
+  '09:00-10:00', '10:00-11:00', '11:00-12:00',
+  '14:00-15:00', '15:00-16:00', '16:00-17:00'
+];
+
 export default function Progress() {
-  const { applications } = useApplicationStore();
+  const { applications, fetchApplications, fetchApplicationDetail, resubmitAfterCorrection, updateMaterial, setAppointment, addMaterial, currentApplication, setCurrentApplication } = useApplicationStore();
   const { user } = useUserStore();
   const [activeTab, setActiveTab] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [appointmentDate, setAppointmentDate] = useState('');
+  const [appointmentTime, setAppointmentTime] = useState('');
+  const [selectedFileForReupload, setSelectedFileForReupload] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredApps = applications.filter((app) => {
-    if (app.applicantId !== user?.id && user?.role !== 'admin' && user?.role !== 'approver') {
+    if (user?.role === 'citizen' && app.applicantId !== user?.id) {
       return false;
     }
     if (activeTab !== 'all' && app.status !== activeTab) {
@@ -31,6 +42,76 @@ export default function Progress() {
     }
     return true;
   });
+
+  const handleSelectApp = (app: Application) => {
+    setSelectedApp(app);
+    fetchApplicationDetail(app.id);
+  };
+
+  const handleFileReupload = (materialId: string) => {
+    setSelectedFileForReupload(materialId);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedApp || !selectedFileForReupload) return;
+
+    const newMaterial: UploadedMaterial = {
+      id: `umat-${Date.now()}`,
+      materialId: selectedFileForReupload,
+      name: file.name,
+      url: '#',
+      size: file.size,
+      uploadTime: new Date().toLocaleString(),
+      status: 'pending'
+    };
+
+    addMaterial(selectedApp.id, newMaterial);
+    setSelectedFileForReupload(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleResubmit = () => {
+    if (!selectedApp) return;
+    resubmitAfterCorrection(selectedApp.id);
+    setShowCorrectionModal(false);
+    const updated = fetchApplicationDetail(selectedApp.id);
+    if (updated) setSelectedApp(updated);
+  };
+
+  const handleMakeAppointment = () => {
+    if (!selectedApp || !appointmentDate || !appointmentTime) return;
+    
+    const appointment: Appointment = {
+      id: `apt-${Date.now()}`,
+      date: appointmentDate,
+      timeSlot: appointmentTime,
+      location: '政务服务中心一楼大厅',
+      createTime: new Date().toLocaleString()
+    };
+
+    setAppointment(selectedApp.id, appointment);
+    setShowAppointmentModal(false);
+    setAppointmentDate('');
+    setAppointmentTime('');
+    const updated = fetchApplicationDetail(selectedApp.id);
+    if (updated) setSelectedApp(updated);
+  };
+
+  const handleDownloadResult = (file: { id: string; name: string }) => {
+    const content = `办理结果文件\n\n事项名称：${selectedApp?.itemName}\n办件编号：${selectedApp?.id}\n申请人：${selectedApp?.applicantName}\n办结时间：${new Date().toLocaleString()}\n\n该事项已办结，相关证件已制作完成，请凭此通知和本人身份证到政务服务中心领取。`;
+    
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name.replace('.pdf', '.txt');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -85,7 +166,7 @@ export default function Progress() {
                   className={`bg-white rounded-xl shadow-sm p-5 cursor-pointer transition-all hover:shadow-md border-2 ${
                     selectedApp?.id === app.id ? 'border-blue-500' : 'border-transparent'
                   }`}
-                  onClick={() => setSelectedApp(app)}
+                  onClick={() => handleSelectApp(app)}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <h3 className="font-semibold text-gray-900 truncate flex-1">{app.itemName}</h3>
@@ -135,7 +216,7 @@ export default function Progress() {
                   <div className="relative">
                     <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
                     <div className="space-y-6">
-                      {selectedApp.approvalRecords.map((record, index) => (
+                      {selectedApp.approvalRecords.map((record) => (
                         <div key={record.id} className="relative flex gap-4">
                           <div
                             className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -200,7 +281,44 @@ export default function Progress() {
                         <p className="font-medium text-gray-900">{selectedApp.deadline}</p>
                       </div>
                     )}
+                    {selectedApp.assignedDepartment && (
+                      <div>
+                        <p className="text-sm text-gray-500 mb-1">承办部门</p>
+                        <p className="font-medium text-gray-900">{selectedApp.assignedDepartment}</p>
+                      </div>
+                    )}
                   </div>
+
+                  {Object.keys(selectedApp.formData).length > 0 && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-500 mb-2">表单预填信息</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {Object.entries(selectedApp.formData).map(([key, value]) => (
+                          <div key={key}>
+                            <p className="text-xs text-gray-500">{key}</p>
+                            <p className="text-sm text-gray-900">{String(value)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedApp.signature && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <p className="text-sm text-gray-500 mb-2 flex items-center gap-1">
+                        <PenTool className="w-4 h-4" />
+                        电子签名
+                      </p>
+                      <div className="bg-white p-3 rounded border border-gray-200 inline-block">
+                        <img
+                          src={selectedApp.signature.dataUrl}
+                          alt="电子签名"
+                          className="h-16"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">签名时间：{selectedApp.signature.createTime}</p>
+                    </div>
+                  )}
                 </div>
 
                 {selectedApp.materials.length > 0 && (
@@ -220,13 +338,93 @@ export default function Progress() {
                             <div>
                               <p className="font-medium text-gray-900 text-sm">{material.name}</p>
                               <p className="text-xs text-gray-500">
-                                {(material.size / 1024 / 1024).toFixed(2)} MB
+                                {(material.size / 1024 / 1024).toFixed(2)} MB | {material.uploadTime}
                               </p>
                             </div>
                           </div>
-                          <StatusBadge status={material.status} size="sm" />
+                          <div className="flex items-center gap-2">
+                            <StatusBadge status={material.status} size="sm" />
+                            {selectedApp.status === 'correction' && material.status === 'rejected' && (
+                              <button
+                                onClick={() => handleFileReupload(material.id)}
+                                className="px-3 py-1 text-xs bg-orange-100 text-orange-600 rounded-lg hover:bg-orange-200 transition-colors flex items-center gap-1"
+                              >
+                                <Upload className="w-3 h-3" />
+                                重新上传
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
+                    </div>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                  </div>
+                )}
+
+                {selectedApp.resultFiles && selectedApp.resultFiles.length > 0 && (
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Download className="w-5 h-5 text-blue-600" />
+                      办理结果
+                    </h3>
+                    <div className="space-y-3">
+                      {selectedApp.resultFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                        >
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-5 h-5 text-green-600" />
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{file.name}</p>
+                              <p className="text-xs text-gray-500">生成时间：{file.createTime}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDownloadResult(file)}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
+                          >
+                            <Download className="w-4 h-4" />
+                            下载
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedApp.appointment && (
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-blue-600" />
+                      预约取件
+                    </h3>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-blue-900 mb-1">已预约取件</p>
+                          <div className="text-sm text-blue-700 space-y-1">
+                            <p className="flex items-center gap-1">
+                              <Calendar className="w-4 h-4" />
+                              日期：{selectedApp.appointment.date}
+                            </p>
+                            <p className="flex items-center gap-1">
+                              <Clock className="w-4 h-4" />
+                              时间：{selectedApp.appointment.timeSlot}
+                            </p>
+                            <p className="flex items-center gap-1">
+                              <MapPin className="w-4 h-4" />
+                              地点：{selectedApp.appointment.location}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -249,26 +447,56 @@ export default function Progress() {
                   <div className="flex flex-wrap gap-3">
                     {selectedApp.status === 'completed' && (
                       <>
-                        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
-                          <Download className="w-4 h-4" />
-                          下载结果
-                        </button>
-                        <button className="px-4 py-2 bg-white text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2">
-                          <MessageSquare className="w-4 h-4" />
-                          满意度评价
-                        </button>
+                        {!selectedApp.resultFiles || selectedApp.resultFiles.length === 0 ? (
+                          <button
+                            onClick={() => {
+                              if (!selectedApp) return;
+                              const resultFile = {
+                                id: `result-${Date.now()}`,
+                                name: `${selectedApp.itemName}_办理结果.pdf`,
+                                url: '#',
+                                type: 'application/pdf',
+                                createTime: new Date().toLocaleString()
+                              };
+                              useApplicationStore.getState().addResultFile(selectedApp.id, resultFile);
+                              const updated = fetchApplicationDetail(selectedApp.id);
+                              if (updated) setSelectedApp(updated);
+                            }}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                          >
+                            <Download className="w-4 h-4" />
+                            生成办理结果
+                          </button>
+                        ) : null}
+                        {!selectedApp.appointment && (
+                          <button
+                            onClick={() => setShowAppointmentModal(true)}
+                            className="px-4 py-2 bg-white text-blue-600 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+                          >
+                            <Calendar className="w-4 h-4" />
+                            预约取件
+                          </button>
+                        )}
                       </>
                     )}
                     {selectedApp.status === 'correction' && (
-                      <button className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2">
+                      <button
+                        onClick={() => setShowCorrectionModal(true)}
+                        className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
+                      >
                         <FileText className="w-4 h-4" />
-                        补正材料
+                        补正材料并重新提交
                       </button>
                     )}
-                    <button className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      预约取件
-                    </button>
+                    {selectedApp.status !== 'completed' && !selectedApp.appointment && (
+                      <button
+                        onClick={() => setShowAppointmentModal(true)}
+                        className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        预约取件
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -281,6 +509,115 @@ export default function Progress() {
           </div>
         </div>
       </div>
+
+      {showCorrectionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">补正材料确认</h3>
+              <button
+                onClick={() => setShowCorrectionModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-orange-700">
+                  请确认已重新上传所有需要补正的材料，提交后将重新进入审核流程。
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCorrectionModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleResubmit}
+                  className="flex-1 px-4 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                  确认提交
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAppointmentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">预约取件</h3>
+              <button
+                onClick={() => setShowAppointmentModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">选择日期</label>
+                <input
+                  type="date"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={appointmentDate}
+                  onChange={(e) => setAppointmentDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">选择时间段</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {timeSlots.map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                        appointmentTime === slot
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setAppointmentTime(slot)}
+                    >
+                      {slot}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-700 flex items-start gap-2">
+                  <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  取件地点：政务服务中心一楼大厅
+                </p>
+                <p className="text-sm text-blue-700 flex items-start gap-2 mt-1">
+                  <Phone className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  咨询电话：12345
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowAppointmentModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleMakeAppointment}
+                  disabled={!appointmentDate || !appointmentTime}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  确认预约
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

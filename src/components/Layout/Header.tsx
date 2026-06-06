@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Home, 
@@ -13,32 +13,48 @@ import {
   Menu, 
   X,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  MessageSquare
 } from 'lucide-react';
 import { useUserStore } from '@/store/useUserStore';
-import { mockNotifications } from '@/mock/applications';
+import { useSmsStore } from '@/store/useSmsStore';
+import type { UserRole } from '@/types';
 
-const navItems = [
-  { path: '/', label: '首页', icon: Home },
-  { path: '/items', label: '事项库', icon: BookOpen },
-  { path: '/guide', label: '智能导办', icon: Sparkles },
-  { path: '/apply', label: '在线申报', icon: FileText },
-  { path: '/materials', label: '材料中心', icon: FolderOpen },
-  { path: '/approval', label: '协同审批', icon: Users },
-  { path: '/progress', label: '进度查询', icon: Search },
-  { path: '/statistics', label: '评价统计', icon: FileText }
+const allNavItems = [
+  { path: '/', label: '首页', icon: Home, roles: ['citizen', 'worker', 'approver', 'admin'] as UserRole[] },
+  { path: '/items', label: '事项库', icon: BookOpen, roles: ['citizen', 'worker', 'approver', 'admin'] as UserRole[] },
+  { path: '/guide', label: '智能导办', icon: Sparkles, roles: ['citizen', 'worker', 'approver', 'admin'] as UserRole[] },
+  { path: '/apply', label: '在线申报', icon: FileText, roles: ['citizen', 'worker'] as UserRole[] },
+  { path: '/materials', label: '材料中心', icon: FolderOpen, roles: ['citizen', 'worker'] as UserRole[] },
+  { path: '/approval', label: '协同审批', icon: Users, roles: ['worker', 'approver', 'admin'] as UserRole[] },
+  { path: '/progress', label: '进度查询', icon: Search, roles: ['citizen', 'worker', 'approver', 'admin'] as UserRole[] },
+  { path: '/statistics', label: '评价统计', icon: MessageSquare, roles: ['admin'] as UserRole[] },
+  { path: '/sms', label: '短信记录', icon: Bell, roles: ['admin'] as UserRole[] }
 ];
 
 export default function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isLoggedIn, logout } = useUserStore();
+  const { smsRecords } = useSmsStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
 
-  const unreadCount = mockNotifications.filter(n => !n.read).length;
+  const navItems = useMemo(() => {
+    if (!user) return allNavItems.filter(item => item.roles.length === 4);
+    return allNavItems.filter(item => item.roles.includes(user.role));
+  }, [user]);
+
+  const unreadCount = 0;
+
+  const roleLabels: Record<string, string> = {
+    citizen: '市民',
+    worker: '窗口工作人员',
+    approver: '审批人员',
+    admin: '管理员'
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,10 +173,16 @@ export default function Header() {
                 </button>
 
                 {showUserMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-card-hover border border-gray-100 overflow-hidden animate-fade-in">
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-card-hover border border-gray-100 overflow-hidden animate-fade-in">
                     <div className="p-4 border-b border-gray-100">
                       <p className="font-medium text-gray-900">{user.name}</p>
                       <p className="text-xs text-gray-500">{user.phone}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-600 text-xs rounded-full">
+                        {roleLabels[user.role]}
+                      </span>
+                      {user.department && (
+                        <p className="text-xs text-gray-400 mt-1">{user.department}</p>
+                      )}
                     </div>
                     <button
                       onClick={handleLogout}

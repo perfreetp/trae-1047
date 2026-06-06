@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { Lock, Smartphone, User, Shield, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { Lock, Smartphone, User, Shield, Eye, EyeOff, CheckCircle2, Info } from 'lucide-react';
 import { useUserStore } from '@/store/useUserStore';
+import { useSmsStore } from '@/store/useSmsStore';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isLoggedIn, users } = useUserStore();
+  const { sendVerificationCode, verifyCode } = useSmsStore();
   const [loginType, setLoginType] = useState<'password' | 'sms'>('password');
   const [phone, setPhone] = useState('13800138001');
   const [password, setPassword] = useState('123456');
@@ -15,6 +17,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [sentCode, setSentCode] = useState<string | null>(null);
 
   const from = (location.state as { from?: string })?.from || '/';
 
@@ -27,6 +30,8 @@ export default function Login() {
       setError('请输入正确的手机号');
       return;
     }
+    const { code } = sendVerificationCode(phone);
+    setSentCode(code);
     setCountdown(60);
     const timer = setInterval(() => {
       setCountdown((prev) => {
@@ -49,9 +54,15 @@ export default function Login() {
       setError('请输入密码');
       return;
     }
-    if (loginType === 'sms' && !smsCode) {
-      setError('请输入验证码');
-      return;
+    if (loginType === 'sms') {
+      if (!smsCode) {
+        setError('请输入验证码');
+        return;
+      }
+      if (!verifyCode(phone, smsCode)) {
+        setError('验证码错误或已过期');
+        return;
+      }
     }
 
     setLoading(true);
@@ -114,6 +125,17 @@ export default function Login() {
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
               {error}
+            </div>
+          )}
+
+          {sentCode && loginType === 'sms' && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-600 text-sm flex items-start gap-2">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">测试提示：验证码已发送</p>
+                <p className="text-xs mt-1">您的验证码是：<span className="font-mono font-bold">{sentCode}</span></p>
+                <p className="text-xs mt-1">也可在管理员后台"短信记录"中查看</p>
+              </div>
             </div>
           )}
 

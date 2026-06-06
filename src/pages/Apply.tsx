@@ -17,12 +17,13 @@ import StepProgress from '@/components/common/StepProgress';
 import { serviceItems } from '@/mock/items';
 import { useUserStore } from '@/store/useUserStore';
 import { useApplicationStore } from '@/store/useApplicationStore';
+import type { UploadedMaterial, Signature } from '@/types';
 
 export default function Apply() {
   const { itemId } = useParams();
   const navigate = useNavigate();
   const { user } = useUserStore();
-  const { createApplication, updateApplication, submitApplication } = useApplicationStore();
+  const { createApplication, updateApplication, submitApplication, addMaterial, setSignature, currentApplication } = useApplicationStore();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -37,11 +38,24 @@ export default function Apply() {
   const item = serviceItems.find(i => i.id === itemId);
 
   useEffect(() => {
-    if (item && user) {
+    if (item && user && !currentApplication) {
       const newApp = createApplication(item.id, user.id, user.name, user.phone);
       setAppId(newApp.id);
+      setFormData({
+        name: user.name,
+        phone: user.phone,
+        idCard: user.idCard
+      });
+    } else if (currentApplication) {
+      setAppId(currentApplication.id);
+      if (Object.keys(currentApplication.formData).length > 0) {
+        setFormData(currentApplication.formData);
+      }
+      if (currentApplication.signature) {
+        setSignatureData(currentApplication.signature.dataUrl);
+      }
     }
-  }, [item, user]);
+  }, [item, user, currentApplication]);
 
   const steps = [
     { name: '填写信息', description: '基本申报信息' },
@@ -151,13 +165,35 @@ export default function Apply() {
     if (!appId) return;
     setIsSubmitting(true);
     
-    if (appId) {
-      updateApplication(appId, {
-        formData,
-        status: 'submitted'
+    Object.entries(uploadedFiles).forEach(([materialId, files]) => {
+      files.forEach((file) => {
+        const material: UploadedMaterial = {
+          id: `umat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          materialId,
+          name: file.name,
+          url: '#',
+          size: file.size,
+          uploadTime: new Date().toLocaleString(),
+          status: 'pending'
+        };
+        addMaterial(appId, material);
       });
-      submitApplication(appId);
+    });
+
+    if (signatureData) {
+      const signature: Signature = {
+        id: `sig-${Date.now()}`,
+        dataUrl: signatureData,
+        createTime: new Date().toLocaleString()
+      };
+      setSignature(appId, signature);
     }
+
+    updateApplication(appId, {
+      formData
+    });
+    
+    submitApplication(appId);
     
     await new Promise(resolve => setTimeout(resolve, 1500));
     setIsSubmitting(false);

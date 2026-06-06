@@ -75,6 +75,28 @@ export interface ApprovalRecord {
   time: string;
 }
 
+export interface Appointment {
+  id: string;
+  date: string;
+  timeSlot: string;
+  location: string;
+  createTime: string;
+}
+
+export interface ResultFile {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  createTime: string;
+}
+
+export interface Signature {
+  id: string;
+  dataUrl: string;
+  createTime: string;
+}
+
 export interface Application {
   id: string;
   itemId: string;
@@ -92,6 +114,10 @@ export interface Application {
   deadline?: string;
   isOverdue?: boolean;
   correctionNotice?: string;
+  signature?: Signature;
+  appointment?: Appointment;
+  resultFiles?: ResultFile[];
+  assignedDepartment?: string;
 }
 
 export interface Evaluation {
@@ -146,4 +172,19 @@ export interface Notification {
   type: 'system' | 'application' | 'policy';
   time: string;
   read: boolean;
+}
+
+export type SmsType = 'login_code' | 'submit_success' | 'correction' | 'overdue' | 'completed';
+export type SmsStatus = 'pending' | 'sent' | 'failed';
+
+export interface SmsRecord {
+  id: string;
+  phone: string;
+  type: SmsType;
+  content: string;
+  status: SmsStatus;
+  createTime: string;
+  sendTime?: string;
+  applicationId?: string;
+  verificationCode?: string;
 }
