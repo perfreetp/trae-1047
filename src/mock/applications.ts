@@ -47,6 +47,7 @@ export const mockApplications: Application[] = [
     createTime: '2024-01-15 10:00:00',
     updateTime: '2024-01-16 14:30:00',
     currentNode: '材料初审',
+    assignedDepartment: '市场监督管理局',
     approvalRecords: [
       {
         id: 'ar-001',
@@ -107,6 +108,7 @@ export const mockApplications: Application[] = [
     createTime: '2024-06-01 09:00:00',
     updateTime: '2024-06-10 16:00:00',
     currentNode: '录取通知',
+    assignedDepartment: '教育局',
     approvalRecords: [
       {
         id: 'ar-003',
@@ -185,6 +187,7 @@ export const mockApplications: Application[] = [
     createTime: '2024-01-10 11:00:00',
     updateTime: '2024-01-12 09:30:00',
     currentNode: '档案审核',
+    assignedDepartment: '人力资源和社会保障局',
     approvalRecords: [
       {
         id: 'ar-007',
@@ -252,6 +255,7 @@ export const mockApplications: Application[] = [
     createTime: '2024-01-17 10:00:00',
     updateTime: '2024-01-17 10:00:00',
     currentNode: '名称核准',
+    assignedDepartment: '市场监督管理局',
     approvalRecords: [
       {
         id: 'ar-009',

@@ -47,12 +47,9 @@ export default function SmsRecords() {
       records = records.filter(sms => sms.phone === user.phone);
     } else if (user?.role === 'worker') {
       const handledAppIds = applications
-        .filter(app => {
-          const hasHandler = app.approvalRecords?.some(
-            record => record.handler === user.name
-          );
-          return hasHandler;
-        })
+        .filter(app => 
+          app.approvalRecords?.some(record => record.handler === user.name)
+        )
         .map(app => app.id);
       records = records.filter(sms => 
         sms.applicationId && handledAppIds.includes(sms.applicationId)
@@ -73,9 +70,11 @@ export default function SmsRecords() {
         if (isPhoneSearch) {
           return sms.phone === keyword;
         }
+        const appMatch = sms.applicationId && 
+          applications.find(a => a.id === sms.applicationId)?.id.includes(keyword);
         return sms.phone.includes(keyword) || 
                sms.content.includes(keyword) ||
-               (sms.applicationId && sms.applicationId.includes(keyword));
+               appMatch;
       });
     }
 

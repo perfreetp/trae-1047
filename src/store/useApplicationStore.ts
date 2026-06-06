@@ -13,7 +13,7 @@ import { serviceItems } from '@/mock/items';
 import { useSmsStore } from './useSmsStore';
 
 const STORAGE_KEY = 'applications';
-const STORAGE_VERSION = 'v2';
+const STORAGE_VERSION = 'v3';
 const VERSION_KEY = 'applications_version';
 
 interface ApplicationStore {

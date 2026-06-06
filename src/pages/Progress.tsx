@@ -36,8 +36,16 @@ export default function Progress() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredApps = applications.filter((app) => {
-    if (user?.role === 'citizen' && app.applicantId !== user?.id) {
-      return false;
+    if (user) {
+      if (user.role === 'citizen' && app.applicantId !== user.id) {
+        return false;
+      }
+      if (user.role === 'worker' && !app.approvalRecords?.some(record => record.handler === user.name)) {
+        return false;
+      }
+      if (user.role === 'approver' && app.assignedDepartment !== user.department) {
+        return false;
+      }
     }
     if (activeTab !== 'all' && app.status !== activeTab) {
       return false;
